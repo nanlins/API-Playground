@@ -1,0 +1,16 @@
+.pytest_cache
+__pycache__
+*.pyc
+.git
+.gitignore
+.env
+.env.example
+README.md
+tests/
+docs/
+examples/
+.github/
+pyproject.toml
+pytest.ini
+*.db
+*.log
