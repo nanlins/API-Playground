@@ -1,0 +1,10 @@
+services:
+  llm-playground:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./logs.db:/app/logs.db
+    restart: unless-stopped
