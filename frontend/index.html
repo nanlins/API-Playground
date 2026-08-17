@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM API Playground</title>
+<style>
+  :root { --bg: #171a21; --surface: #20242e; --surface2: #2d3342; --primary: #e94560; --text: #eee; --text2: #a5adbd; --border: #313747; --success: #4ade80; --error: #f87171; --warning: #fbbf24; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+  header h1 { font-size: 20px; color: var(--primary); }
+  .header-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .header-controls select, .header-controls input { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+  .header-controls input { min-width: 190px; }
+  .header-controls button { background: var(--primary); color: #fff; border: none; border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+  .header-controls button:hover { opacity: 0.9; }
+  .tabs { display: flex; gap: 2px; margin-bottom: 16px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+  .tab-btn { padding: 10px 18px; background: none; color: var(--text2); border: none; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; white-space: nowrap; transition: all 0.2s; }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  .panel { background: var(--surface); border-radius: 8px; padding: 16px; margin-bottom: 16px; border: 1px solid var(--border); }
+  .panel h3 { font-size: 15px; margin-bottom: 12px; color: var(--text); }
+  textarea, .msg-input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-size: 14px; font-family: inherit; resize: vertical; min-height: 80px; }
+  textarea:focus { outline: none; border-color: var(--primary); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; background: var(--primary); color: #fff; border: none; border-radius: 8px; padding: 10px 20px; cursor: pointer; font-size: 14px; font-weight: 500; }
+  .btn:hover { opacity: 0.9; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary { background: var(--surface2); color: var(--text); }
+  .btn-secondary:hover { background: #3a4255; }
+  .btn-success { background: #059669; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+  .btn-group { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .chat-box { background: var(--bg); border-radius: 8px; padding: 12px; max-height: 400px; overflow-y: auto; margin-bottom: 12px; border: 1px solid var(--border); }
+  .message { margin-bottom: 12px; padding: 10px 14px; border-radius: 8px; }
+  .message.user { background: var(--surface2); margin-left: 40px; }
+  .message.assistant { background: #262b36; }
+  .message.system { background: #1e222b; border: 1px dashed #555; font-style: italic; color: var(--text2); }
+  .message.tool { background: #1d2a1f; border: 1px solid #2f4a32; font-size: 13px; }
+  .message .role-label { font-size: 11px; color: var(--text2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .message .content { white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
+  .message .content-streaming { border-right: 2px solid var(--primary); animation: blink 0.8s step-end infinite; }
+  @keyframes blink { 50% { border-color: transparent; } }
+  .tool-call-item { background: #2a1f2a; border: 1px solid #4a2f4a; border-radius: 6px; padding: 8px; margin-top: 6px; font-size: 13px; }
+  .tool-call-item .tool-name { color: var(--primary); font-weight: 500; }
+  .tool-result { background: #1d2a1f; border: 1px solid #2f4a32; border-radius: 6px; padding: 8px; margin-top: 6px; font-size: 13px; color: var(--success); }
+  .input-row { display: flex; gap: 8px; margin-top: 8px; }
+  .input-row textarea { flex: 1; min-height: 50px; }
+  .structured-output pre, .history pre, .embedding-result pre { background: var(--bg); padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 13px; border: 1px solid var(--border); max-height: 300px; overflow-y: auto; }
+  .embedding-inputs { display: flex; gap: 12px; }
+  .embedding-inputs textarea { flex: 1; }
+  .similarity-result { text-align: center; padding: 20px; }
+  .similarity-score { font-size: 36px; font-weight: bold; color: var(--primary); }
+  .similarity-label { color: var(--text2); font-size: 14px; margin-top: 4px; }
+  .history-item { border-bottom: 1px solid var(--border); padding: 10px 0; display: grid; grid-template-columns: auto 1fr auto; gap: 8px; font-size: 13px; cursor: pointer; }
+  .history-item:hover { background: rgba(255,255,255,0.03); }
+  .history-item .badge { background: var(--surface2); padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  .status-bar { display: flex; gap: 16px; padding: 8px 0; color: var(--text2); font-size: 12px; border-top: 1px solid var(--border); margin-top: 8px; }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-box { background: rgba(248,113,113,0.1); border: 1px solid var(--error); border-radius: 8px; padding: 12px; color: var(--error); margin-top: 8px; font-size: 13px; }
+  .success-box { background: rgba(4,120,87,0.1); border: 1px solid var(--success); border-radius: 8px; padding: 12px; color: var(--success); margin-top: 8px; font-size: 13px; }
+  .toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 20px; z-index: 1000; animation: slideIn 0.3s ease; }
+  @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-field { display: flex; flex-direction: column; gap: 4px; }
+  .form-field label { font-size: 13px; color: var(--text2); }
+  .form-field input, .form-field select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 13px; }
+  .form-field input[type="checkbox"] { width: 16px; height: 16px; }
+  .provider-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .provider-card .provider-info { flex: 1; min-width: 220px; }
+  .provider-card .provider-name { font-weight: 600; color: var(--primary); }
+  .provider-card .provider-meta { font-size: 12px; color: var(--text2); margin-top: 4px; word-break: break-all; }
+  @media (max-width: 768px) { .container { padding: 8px; } .header-controls input { min-width: 120px; } .embedding-inputs { flex-direction: column; } .form-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>LLM API Playground</h1>
+    <div class="header-controls">
+      <select id="providerSelect">
+        <option value="deepseek">DeepSeek</option>
+        <option value="dashscope">通义千问</option>
+      </select>
+      <select id="modelSelect"></select>
+      <input type="password" id="apiKeyInput" placeholder="对话 API Key（DeepSeek/千问）" autocomplete="off">
+      <input type="password" id="dashscopeKeyInput" placeholder="嵌入 Dashscope Key" autocomplete="off">
+      <button onclick="saveApiKey()" class="btn-sm">保存</button>
+    </div>
+  </header>
+
+  <div class="tabs" id="tabBar">
+    <button class="tab-btn active" onclick="switchTab('chat')">对话</button>
+    <button class="tab-btn" onclick="switchTab('structured')">结构化输出</button>
+    <button class="tab-btn" onclick="switchTab('tools')">工具调用</button>
+    <button class="tab-btn" onclick="switchTab('embeddings')">嵌入</button>
+    <button class="tab-btn" onclick="switchTab('history')">历史记录</button>
+    <button class="tab-btn" onclick="switchTab('providers')">供应商管理</button>
+  </div>
+
+  <div id="tab-chat" class="tab-content active">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h3>对话</h3>
+        <div>
+          <label><input type="checkbox" id="streamToggle" checked> 流式</label>
+        </div>
+      </div>
+      <div class="chat-box" id="chatBox"></div>
+      <div class="input-row">
+        <textarea id="chatInput" placeholder="输入消息..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat()}"></textarea>
+        <button class="btn" onclick="sendChat()" id="sendChatBtn">发送</button>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-sm btn-secondary" onclick="addSystemPrompt()">+ 系统提示词</button>
+        <button class="btn btn-sm btn-secondary" onclick="clearChat()">清空</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-structured" class="tab-content">
+    <div class="panel">
+      <h3>结构化输出（JSON Schema）</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div>
+          <label style="font-size:13px;color:var(--text2);display:block;margin-bottom:4px">系统提示词</label>
+          <textarea id="structuredSystemPrompt" style="min-height:60px">你是一个信息提取助手，严格按照给定的 JSON Schema 输出。</textarea>
+        </div>
+        <div>
+          <label style="font-size:13px;color:var(--text2);display:block;margin-bottom:4px">JSON Schema</label>
+          <textarea id="structuredSchema" style="min-height:60px;font-family:monospace;font-size:12px">{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer","minimum":0},"skills":{"type":"array","items":{"type":"string"}}},"required":["name","age","skills"]}</textarea>
+        </div>
+      </div>
+      <textarea id="structuredInput" placeholder="输入要提取的信息..." style="min-height:60px">张三是一名 28 岁的全栈工程师，精通 Python、JavaScript 和 Go。</textarea>
+      <div class="btn-group">
+        <button class="btn" onclick="sendStructured()">发送</button>
+        <button class="btn btn-sm btn-secondary" onclick="loadInvalidSchema()">测试 Schema 失败案例</button>
+      </div>
+      <div id="structuredResult" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <div id="tab-tools" class="tab-content">
+    <div class="panel">
+      <h3>工具调用（Function Calling / Tool Use）</h3>
+      <textarea id="toolsInput" placeholder="例如：北京现在的天气怎么样？顺便帮我算一下 123 乘以 456 等于多少？" style="min-height:80px">北京现在的天气怎么样？顺便帮我算一下 123 乘以 456 等于多少？</textarea>
+      <div class="btn-group">
+        <button class="btn" onclick="sendTools()">调用工具链路</button>
+        <button class="btn btn-sm btn-secondary" onclick="document.getElementById('toolsInput').value='帮我搜索最新的人工智能新闻，然后告诉我现在的时间'">搜索+时间</button>
+      </div>
+      <div id="toolsResult" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <div id="tab-embeddings" class="tab-content">
+    <div class="panel">
+      <h3>嵌入生成与相似度计算</h3>
+      <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+        <div class="form-field" style="flex:1;min-width:200px">
+          <label>Embedding 供应商</label>
+          <select id="embeddingProviderSelect"></select>
+        </div>
+        <div class="form-field" style="flex:1;min-width:200px">
+          <label>Embedding 模型</label>
+          <select id="embeddingModelSelect"></select>
+        </div>
+      </div>
+      <div class="embedding-inputs">
+        <textarea id="embedText1" placeholder="文本 A" style="min-height:80px">机器学习和深度学习是人工智能的重要分支。</textarea>
+        <textarea id="embedText2" placeholder="文本 B" style="min-height:80px">深度学习使用神经网络进行模式识别。</textarea>
+      </div>
+      <div class="btn-group">
+        <button class="btn" onclick="compareEmbeddings()">计算相似度</button>
+        <button class="btn btn-sm btn-secondary" onclick="document.getElementById('embedText2').value='今天晚上吃什么比较好呢'">测试不相关文本</button>
+      </div>
+      <div id="embeddingResult" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <div id="tab-history" class="tab-content">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3>调用历史</h3>
+        <button class="btn btn-sm btn-secondary" onclick="loadHistory()">刷新</button>
+      </div>
+      <div id="historyList"><p style="color:var(--text2)">点击刷新加载历史记录...</p></div>
+      <div id="historyDetail" style="margin-top:12px;display:none"></div>
+    </div>
+  </div>
+
+  <div id="tab-providers" class="tab-content">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3>供应商管理</h3>
+        <button class="btn btn-sm" onclick="openProviderForm()">+ 新增供应商</button>
+      </div>
+      <div id="providerList"></div>
+    </div>
+    <div id="providerForm" class="panel" style="display:none">
+      <h3 id="providerFormTitle">新增供应商</h3>
+      <input type="hidden" id="providerFormIndex" value="-1">
+      <div class="form-grid">
+        <div class="form-field"><label>名称（唯一标识）</label><input id="providerName" placeholder="如 kimi、zhipu"></div>
+        <div class="form-field"><label>显示名</label><input id="providerDisplayName" placeholder="如 Kimi"></div>
+        <div class="form-field" style="grid-column:1/-1"><label>Base URL</label><input id="providerBaseUrl" placeholder="https://api.moonshot.cn/v1"></div>
+        <div class="form-field"><label>API Key（仅当前会话保存）</label><input type="password" id="providerApiKey" autocomplete="off"></div>
+        <div class="form-field"><label>Embedding 维度（可选）</label><input type="number" id="providerEmbeddingDimensions" placeholder="如 1536"></div>
+        <div class="form-field" style="grid-column:1/-1"><label>聊天模型（逗号分隔）</label><input id="providerChatModels" placeholder="kimi-latest,moonshot-v1-8k"></div>
+        <div class="form-field" style="grid-column:1/-1"><label>Embedding 模型（逗号分隔，留空表示不支持）</label><input id="providerEmbeddingModels" placeholder="embedding-2"></div>
+        <div class="form-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="providerSupportsChat" checked><label>支持聊天</label></div>
+        <div class="form-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="providerSupportsEmbedding"><label>支持 Embedding</label></div>
+        <div class="form-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="providerNativeJsonMode" checked><label>原生 JSON 模式</label></div>
+        <div class="form-field" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="providerAnthropicStyle"><label>Anthropic 原生协议（RAG 用）</label></div>
+      </div>
+      <div class="btn-group">
+        <button class="btn" onclick="saveProvider()">保存</button>
+        <button class="btn btn-sm btn-secondary" onclick="testProviderFromForm('chat')">测试聊天</button>
+        <button class="btn btn-sm btn-secondary" onclick="testProviderFromForm('embedding')">测试 Embedding</button>
+        <button class="btn btn-sm btn-secondary" onclick="closeProviderForm()">取消</button>
+      </div>
+      <div id="providerTestResult" style="margin-top:12px"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = '';
+let provider = 'deepseek';
+let currentModel = '';
+let chatHistory = [];
+let modelsCache = {};
+let customProviders = [];
+let currentEmbeddingProvider = 'dashscope';
+let currentEmbeddingModel = '';
+const CUSTOM_PROVIDERS_KEY = 'playground_custom_providers';
+
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getApiKey() {
+  return document.getElementById('apiKeyInput').value.trim();
+}
+
+function getDashscopeKey() {
+  return document.getElementById('dashscopeKeyInput').value.trim();
+}
+
+function saveApiKey() {
+  sessionStorage.setItem('playground_chat_key', getApiKey());
+  sessionStorage.setItem('playground_dashscope_key', getDashscopeKey());
+  toast('API Key 已保存（当前会话有效）');
+}
+
+function toast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+async function loadModels() {
+  try {
+    const resp = await fetch(API_BASE + '/v1/models');
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    modelsCache = await resp.json();
+    loadCustomProviders();
+    syncProviderSelect();
+    filterModels();
+    filterEmbeddingProviders();
+    filterEmbeddingModels();
+    renderProviderList();
+  } catch(e) {
+    console.error('加载模型列表失败:', e);
+    toast('加载模型列表失败: ' + e.message);
+  }
+}
+
+function filterModels() {
+  const modelSelect = document.getElementById('modelSelect');
+  const selectedProvider = document.getElementById('providerSelect').value;
+  modelSelect.innerHTML = '';
+  const builtin = modelsCache[selectedProvider];
+  const custom = customProviders.find(p => p.name === selectedProvider);
+  const models = builtin ? builtin.models : (custom ? custom.chat_models : []);
+  if (!models || !models.length) { currentModel = ''; return; }
+  const group = document.createElement('optgroup');
+  group.label = (builtin && builtin.name) || (custom && (custom.display_name || custom.name)) || selectedProvider;
+  models.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = selectedProvider + '/' + m;
+    opt.textContent = m;
+    group.appendChild(opt);
+  });
+  modelSelect.appendChild(group);
+  currentModel = modelSelect.value || '';
+}
+
+
+function providerLabel(name) {
+  const info = modelsCache[name];
+  if (info && info.name) return info.name;
+  const custom = customProviders.find(p => p.name === name);
+  return (custom && (custom.display_name || custom.name)) || name;
+}
+
+function loadCustomProviders() {
+  try {
+    const raw = localStorage.getItem(CUSTOM_PROVIDERS_KEY);
+    customProviders = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(customProviders)) customProviders = [];
+    customProviders.forEach(p => {
+      if (!Array.isArray(p.chat_models)) p.chat_models = p.chat_model ? [p.chat_model] : [];
+      if (!Array.isArray(p.embedding_models)) p.embedding_models = p.embedding_model ? [p.embedding_model] : [];
+      if (!Array.isArray(p.chat_models)) p.chat_models = [];
+      if (!Array.isArray(p.embedding_models)) p.embedding_models = [];
+    });
+  } catch (e) {
+    customProviders = [];
+  }
+}
+
+function saveCustomProviders() {
+  try {
+    const safe = customProviders.map(p => {
+      const copy = Object.assign({}, p);
+      delete copy.api_key;
+      return copy;
+    });
+    localStorage.setItem(CUSTOM_PROVIDERS_KEY, JSON.stringify(safe));
+  } catch (e) {
+    toast('保存供应商失败: ' + e.message);
+  }
+}
+
+function getProviderApiKey(name) {
+  try { return sessionStorage.getItem('playground_provider_key_' + name) || ''; } catch (e) { return ''; }
+}
+
+function setProviderApiKey(name, key) {
+  try {
+    if (key) sessionStorage.setItem('playground_provider_key_' + name, key);
+    else sessionStorage.removeItem('playground_provider_key_' + name);
+  } catch (e) {}
+}
+
+function syncProviderSelect() {
+  const sel = document.getElementById('providerSelect');
+  const previous = provider;
+  sel.innerHTML = '';
+  const seen = new Set();
+  Object.keys(modelsCache).forEach(name => {
+    const info = modelsCache[name] || {};
+    if (!info.models || !info.models.length) return;
+    seen.add(name);
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = info.name || name;
+    sel.appendChild(opt);
+  });
+  customProviders.forEach(p => {
+    if (seen.has(p.name) || p.supports_chat === false) return;
+    if (!p.chat_models || !p.chat_models.length) return;
+    seen.add(p.name);
+    const opt = document.createElement('option');
+    opt.value = p.name;
+    opt.textContent = p.display_name || p.name;
+    sel.appendChild(opt);
+  });
+  if (seen.has(previous)) {
+    sel.value = previous;
+    provider = previous;
+  } else {
+    provider = sel.value || '';
+  }
+}
+
+function buildProviderConfig(name, model) {
+  const custom = customProviders.find(p => p.name === name);
+  if (!custom) return null;
+  const chatModel = model ? String(model).split('/').pop() : ((custom.chat_models && custom.chat_models[0]) || custom.chat_model || '');
+  const embeddingModels = custom.embedding_models || (custom.embedding_model ? [custom.embedding_model] : []);
+  return {
+    name: custom.name,
+    display_name: custom.display_name || custom.name,
+    base_url: custom.base_url || '',
+    api_key: getProviderApiKey(custom.name),
+    chat_model: chatModel,
+    embedding_model: embeddingModels[0] || '',
+    embedding_dimensions: custom.embedding_dimensions || null,
+    supports_chat: custom.supports_chat !== false,
+    supports_embedding: !!custom.supports_embedding,
+    anthropic_style: !!custom.anthropic_style,
+    native_json_mode: custom.native_json_mode !== false,
+  };
+}
+
+function currentProviderConfig() {
+  const name = document.getElementById('providerSelect').value;
+  const custom = customProviders.find(p => p.name === name);
+  if (!custom) return null;
+  return buildProviderConfig(name, currentModel);
+}
+
+function filterEmbeddingProviders() {
+  const sel = document.getElementById('embeddingProviderSelect');
+  const previous = currentEmbeddingProvider;
+  sel.innerHTML = '';
+  const seen = new Set();
+  Object.keys(modelsCache).forEach(name => {
+    const info = modelsCache[name] || {};
+    const models = info.embedding_models || (info.embedding_model ? [info.embedding_model] : []);
+    if (!models.length) return;
+    seen.add(name);
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = (info.name || name) + ' · ' + models[0];
+    sel.appendChild(opt);
+  });
+  customProviders.forEach(p => {
+    if (seen.has(p.name) || !p.supports_embedding) return;
+    const models = p.embedding_models || (p.embedding_model ? [p.embedding_model] : []);
+    if (!models.length) return;
+    seen.add(p.name);
+    const opt = document.createElement('option');
+    opt.value = p.name;
+    opt.textContent = (p.display_name || p.name) + ' · ' + models[0];
+    sel.appendChild(opt);
+  });
+  if (seen.has(previous)) sel.value = previous;
+  else sel.value = sel.options[0] ? sel.options[0].value : '';
+  currentEmbeddingProvider = sel.value;
+}
+
+function filterEmbeddingModels() {
+  const sel = document.getElementById('embeddingModelSelect');
+  const previous = currentEmbeddingModel;
+  sel.innerHTML = '';
+  const name = currentEmbeddingProvider;
+  const info = modelsCache[name] || {};
+  const custom = customProviders.find(p => p.name === name);
+  const models = custom
+    ? (custom.embedding_models || (custom.embedding_model ? [custom.embedding_model] : []))
+    : (info.embedding_models || (info.embedding_model ? [info.embedding_model] : []));
+  if (!models.length) { currentEmbeddingModel = ''; return; }
+  models.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m;
+    sel.appendChild(opt);
+  });
+  if (models.includes(previous)) sel.value = previous;
+  currentEmbeddingModel = sel.value || '';
+}
+
+function makeSmallButton(label, cls, onClick) {
+  const b = document.createElement('button');
+  b.className = 'btn btn-sm ' + (cls || '');
+  b.textContent = label;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+function renderProviderList() {
+  const list = document.getElementById('providerList');
+  list.innerHTML = '';
+  Object.keys(modelsCache).forEach(name => {
+    const info = modelsCache[name] || {};
+    const card = document.createElement('div');
+    card.className = 'provider-card';
+    const main = document.createElement('div');
+    main.className = 'provider-info';
+    const title = document.createElement('div');
+    title.className = 'provider-name';
+    title.textContent = (info.name || name) + '（内置）';
+    const meta = document.createElement('div');
+    meta.className = 'provider-meta';
+    const chatModels = info.models || [];
+    const embedModels = info.embedding_models || (info.embedding_model ? [info.embedding_model] : []);
+    meta.textContent = '聊天: ' + (chatModels.join(', ') || '无') +
+      (embedModels.length ? ' | Embedding: ' + embedModels.join(', ') : ' | 不支持 Embedding');
+    main.appendChild(title);
+    main.appendChild(meta);
+    card.appendChild(main);
+    list.appendChild(card);
+  });
+  if (!customProviders.length) {
+    const empty = document.createElement('p');
+    empty.style.color = 'var(--text2)';
+    empty.style.fontSize = '13px';
+    empty.textContent = '暂无自定义供应商，点击“+ 新增供应商”添加。';
+    list.appendChild(empty);
+  }
+  customProviders.forEach((p, index) => {
+    const card = document.createElement('div');
+    card.className = 'provider-card';
+    const main = document.createElement('div');
+    main.className = 'provider-info';
+    const title = document.createElement('div');
+    title.className = 'provider-name';
+    title.textContent = (p.display_name || p.name) + '（自定义）';
+    const meta = document.createElement('div');
+    meta.className = 'provider-meta';
+    const chatModels = p.chat_models || (p.chat_model ? [p.chat_model] : []);
+    const embedModels = p.embedding_models || (p.embedding_model ? [p.embedding_model] : []);
+    meta.textContent = p.base_url + ' | 聊天: ' + (chatModels.join(', ') || '无') +
+      (embedModels.length ? ' | Embedding: ' + embedModels.join(', ') : ' | 不支持 Embedding') +
+      (p.embedding_dimensions ? ' | 维度: ' + p.embedding_dimensions : '') +
+      (p.native_json_mode === false ? ' | 非原生 JSON' : '');
+    main.appendChild(title);
+    main.appendChild(meta);
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '6px';
+    actions.appendChild(makeSmallButton('编辑', 'btn-secondary', () => openProviderForm(p.name)));
+    actions.appendChild(makeSmallButton('删除', 'btn-secondary', () => deleteProvider(p.name)));
+    card.appendChild(main);
+    card.appendChild(actions);
+    list.appendChild(card);
+    card.dataset.index = String(index);
+  });
+}
+
+function providerFromForm() {
+  const name = document.getElementById('providerName').value.trim();
+  const baseUrl = document.getElementById('providerBaseUrl').value.trim();
+  if (!name || !baseUrl) {
+    toast('名称和 Base URL 必填');
+    return null;
+  }
+  const chatModels = document.getElementById('providerChatModels').value.split(',').map(s => s.trim()).filter(Boolean);
+  const embedModels = document.getElementById('providerEmbeddingModels').value.split(',').map(s => s.trim()).filter(Boolean);
+  const dimsRaw = parseInt(document.getElementById('providerEmbeddingDimensions').value, 10);
+  return {
+    name: name,
+    display_name: document.getElementById('providerDisplayName').value.trim() || name,
+    base_url: baseUrl,
+    chat_model: chatModels[0] || '',
+    embedding_model: embedModels[0] || '',
+    embedding_dimensions: Number.isFinite(dimsRaw) && dimsRaw > 0 ? dimsRaw : null,
+    supports_chat: document.getElementById('providerSupportsChat').checked,
+    supports_embedding: document.getElementById('providerSupportsEmbedding').checked,
+    native_json_mode: document.getElementById('providerNativeJsonMode').checked,
+    anthropic_style: document.getElementById('providerAnthropicStyle').checked,
+    chat_models: chatModels,
+    embedding_models: embedModels,
+  };
+}
+
+function openProviderForm(name) {
+  document.getElementById('providerForm').style.display = 'block';
+  document.getElementById('providerTestResult').innerHTML = '';
+  const indexField = document.getElementById('providerFormIndex');
+  if (name) {
+    const p = customProviders.find(x => x.name === name);
+    if (!p) return;
+    indexField.value = String(customProviders.indexOf(p));
+    document.getElementById('providerFormTitle').textContent = '编辑供应商';
+    document.getElementById('providerName').value = p.name;
+    document.getElementById('providerDisplayName').value = p.display_name || '';
+    document.getElementById('providerBaseUrl').value = p.base_url || '';
+    document.getElementById('providerApiKey').value = getProviderApiKey(p.name) || '';
+    document.getElementById('providerEmbeddingDimensions').value = p.embedding_dimensions || '';
+    document.getElementById('providerChatModels').value = (p.chat_models || [p.chat_model || '']).join(',');
+    document.getElementById('providerEmbeddingModels').value = (p.embedding_models || [p.embedding_model || '']).join(',');
+    document.getElementById('providerSupportsChat').checked = p.supports_chat !== false;
+    document.getElementById('providerSupportsEmbedding').checked = !!p.supports_embedding;
+    document.getElementById('providerNativeJsonMode').checked = p.native_json_mode !== false;
+    document.getElementById('providerAnthropicStyle').checked = !!p.anthropic_style;
+  } else {
+    indexField.value = '-1';
+    document.getElementById('providerFormTitle').textContent = '新增供应商';
+    document.getElementById('providerName').value = '';
+    document.getElementById('providerDisplayName').value = '';
+    document.getElementById('providerBaseUrl').value = '';
+    document.getElementById('providerApiKey').value = '';
+    document.getElementById('providerEmbeddingDimensions').value = '';
+    document.getElementById('providerChatModels').value = '';
+    document.getElementById('providerEmbeddingModels').value = '';
+    document.getElementById('providerSupportsChat').checked = true;
+    document.getElementById('providerSupportsEmbedding').checked = false;
+    document.getElementById('providerNativeJsonMode').checked = true;
+    document.getElementById('providerAnthropicStyle').checked = false;
+  }
+  document.getElementById('providerForm').scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+function closeProviderForm() {
+  document.getElementById('providerForm').style.display = 'none';
+}
+
+function saveProvider() {
+  const payload = providerFromForm();
+  if (!payload) return;
+  const index = parseInt(document.getElementById('providerFormIndex').value, 10);
+  const duplicate = customProviders.findIndex((p, i) => p.name === payload.name && i !== index);
+  if (duplicate >= 0) {
+    toast('同名供应商已存在');
+    return;
+  }
+  if (index >= 0 && customProviders[index]) {
+    const oldName = customProviders[index].name;
+    const oldKey = getProviderApiKey(oldName);
+    customProviders[index] = payload;
+    if (oldName !== payload.name) {
+      setProviderApiKey(oldName, '');
+      if (oldKey) setProviderApiKey(payload.name, oldKey);
+    }
+  } else {
+    customProviders.push(payload);
+  }
+  setProviderApiKey(payload.name, document.getElementById('providerApiKey').value.trim());
+  saveCustomProviders();
+  closeProviderForm();
+  loadModels();
+  toast('供应商已保存');
+}
+
+function deleteProvider(name) {
+  if (!confirm('确认删除供应商 ' + name + '？')) return;
+  customProviders = customProviders.filter(p => p.name !== name);
+  setProviderApiKey(name, '');
+  saveCustomProviders();
+  loadModels();
+  toast('供应商已删除');
+}
+
+async function testProviderFromForm(type) {
+  const payload = providerFromForm();
+  if (!payload) return;
+  const resultDiv = document.getElementById('providerTestResult');
+  resultDiv.innerHTML = '<span class="spinner"></span> 测试中...';
+  try {
+    const resp = await fetch(API_BASE + '/v1/providers/test', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        provider_config: Object.assign({}, payload, {api_key: document.getElementById('providerApiKey').value.trim()}),
+        test_type: type,
+        sample_message: 'ping',
+      }),
+    });
+    const result = await resp.json();
+    if (resp.ok && result.success) {
+      const d = result.data || {};
+      const extra = d.dimensions ? '，维度 ' + d.dimensions : '';
+      resultDiv.innerHTML = '<div class="success-box">连接成功：' + escapeHtml((d.provider || payload.name)) + ' / ' +
+        escapeHtml(d.model || '') + '，耗时 ' + Math.round(d.elapsed_ms || 0) + 'ms' + extra + '</div>';
+    } else {
+      resultDiv.innerHTML = '<div class="error-box">测试失败: ' + escapeHtml(result.error || ('HTTP ' + resp.status)) + '</div>';
+    }
+  } catch (e) {
+    resultDiv.innerHTML = '<div class="error-box">请求异常: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+document.getElementById('providerSelect').onchange = function() {
+  provider = this.value;
+  filterModels();
+};
+document.getElementById('modelSelect').onchange = function() {
+  currentModel = this.value;
+};
+document.getElementById('embeddingProviderSelect').onchange = function() {
+  currentEmbeddingProvider = this.value;
+  filterEmbeddingModels();
+};
+document.getElementById('embeddingModelSelect').onchange = function() {
+  currentEmbeddingModel = this.value;
+};
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (event && event.target) event.target.classList.add('active');
+  if (name === 'history') loadHistory();
+}
+
+function addMessage(role, content) {
+  const box = document.getElementById('chatBox');
+  const div = document.createElement('div');
+  div.className = 'message ' + role;
+  const label = {user:'用户', assistant:'助手', system:'系统提示', tool:'工具结果'};
+  const contentDiv = document.createElement('div');
+  contentDiv.className = 'content';
+  contentDiv.textContent = content || '';
+  const roleDiv = document.createElement('div');
+  roleDiv.className = 'role-label';
+  roleDiv.textContent = label[role] || role;
+  div.appendChild(roleDiv);
+  div.appendChild(contentDiv);
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return contentDiv;
+}
+
+function addSystemPrompt() {
+  const promptText = prompt('输入系统提示词：', '你是一个有帮助的 AI 助手。');
+  if (!promptText) return;
+  const systemIndex = chatHistory.findIndex(m => m.role === 'system');
+  const systemMessage = {role: 'system', content: promptText};
+  if (systemIndex >= 0) {
+    chatHistory[systemIndex] = systemMessage;
+  } else {
+    chatHistory.unshift(systemMessage);
+  }
+  addMessage('system', 'System: ' + promptText);
+}
+
+function clearChat() {
+  document.getElementById('chatBox').innerHTML = '';
+  chatHistory = [];
+}
+
+function appendStreamError(parent, message) {
+  const div = document.createElement('div');
+  div.className = 'error-box';
+  div.textContent = message;
+  parent.appendChild(div);
+}
+
+function renderToolCalls(toolCalls) {
+  let html = '';
+  (toolCalls || []).forEach(tc => {
+    const fn = tc.function || {};
+    html += '<div class="tool-call-item"><span class="tool-name">工具: ' + escapeHtml(fn.name || '') + '</span><br><code>' + escapeHtml(fn.arguments || '') + '</code></div>';
+  });
+  return html;
+}
+
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  const btn = document.getElementById('sendChatBtn');
+  btn.disabled = true;
+
+  addMessage('user', text);
+  chatHistory.push({role: 'user', content: text});
+
+  const isStream = document.getElementById('streamToggle').checked;
+  const body = {
+    model: currentModel,
+    messages: chatHistory,
+    stream: isStream,
+    api_key: getApiKey(),
+    provider_config: currentProviderConfig(),
+  };
+
+  try {
+    const resp = await fetch(API_BASE + '/v1/chat/completions', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+
+    if (isStream) {
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        addMessage('assistant', '');
+        appendStreamError(document.getElementById('chatBox').lastElementChild, err.error || ('HTTP ' + resp.status));
+        return;
+      }
+      const contentDiv = addMessage('assistant', '');
+      const spinner = document.createElement('span');
+      spinner.className = 'spinner';
+      contentDiv.appendChild(spinner);
+      const msgDiv = contentDiv.parentElement;
+      let fullText = '';
+      let usage = null;
+      let toolRendered = false;
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, {stream: true});
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') continue;
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.type === 'content') {
+              fullText += parsed.content;
+              contentDiv.textContent = fullText;
+              contentDiv.className = 'content content-streaming';
+            } else if (parsed.type === 'tool_call') {
+              if (!toolRendered) {
+                msgDiv.insertAdjacentHTML('beforeend', renderToolCalls(parsed.tool_calls));
+                toolRendered = true;
+              }
+            } else if (parsed.type === 'usage') {
+              usage = parsed.usage;
+            } else if (parsed.type === 'error') {
+              appendStreamError(msgDiv, parsed.error || '流式请求失败');
+            }
+          } catch(e) {}
+        }
+      }
+      contentDiv.className = 'content';
+      if (usage) {
+        const bar = document.createElement('div');
+        bar.className = 'status-bar';
+        bar.textContent = usage.available
+          ? ('Tokens: P=' + usage.prompt_tokens + ' C=' + usage.completion_tokens + ' T=' + usage.total_tokens)
+          : 'Token 用量不可用';
+        msgDiv.appendChild(bar);
+      }
+      chatHistory.push({role: 'assistant', content: fullText});
+    } else {
+      const result = await resp.json();
+      if (resp.ok && result.success && result.data) {
+        const reply = result.data.content || '';
+        addMessage('assistant', reply);
+        chatHistory.push({role: 'assistant', content: reply});
+      } else {
+        const msgDiv = addMessage('assistant', '').parentElement;
+        appendStreamError(msgDiv, (result.error || ('HTTP ' + resp.status)));
+      }
+    }
+  } catch(e) {
+    addMessage('assistant', '');
+    appendStreamError(document.getElementById('chatBox').lastElementChild, '请求失败: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function sendStructured() {
+  const input = document.getElementById('structuredInput').value.trim();
+  const system = document.getElementById('structuredSystemPrompt').value.trim();
+  const schemaText = document.getElementById('structuredSchema').value.trim();
+  const resultDiv = document.getElementById('structuredResult');
+  resultDiv.innerHTML = '<span class="spinner"></span> 请求中...';
+
+  let schema;
+  try {
+    schema = JSON.parse(schemaText);
+  } catch(e) {
+    resultDiv.innerHTML = '<div class="error-box">JSON Schema 解析失败：' + escapeHtml(e.message) + '</div>';
+    return;
+  }
+
+  const body = {
+    model: currentModel,
+    messages: [{role: 'user', content: input}],
+    system_prompt: system,
+    stream: false,
+    api_key: getApiKey(),
+    provider_config: currentProviderConfig(),
+    response_format: {type: 'json_schema', json_schema: {name: 'extracted_data', schema: schema}},
+  };
+  await runStructured(body, schema, 0, resultDiv);
+}
+
+async function runStructured(body, schema, retryCount, resultDiv) {
+  if (retryCount > 0) {
+    resultDiv.innerHTML = '<span class="spinner"></span> 第 ' + retryCount + ' 次修正重试中...';
+  }
+  try {
+    const resp = await fetch(API_BASE + '/v1/chat/completions', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const result = await resp.json();
+    if (!resp.ok || !result.success || !result.data) {
+      resultDiv.innerHTML = '<div class="error-box">请求失败: ' + escapeHtml(result.error || ('HTTP ' + resp.status)) + '</div>';
+      return;
+    }
+
+    const content = result.data.content || '';
+    let parsed = null;
+    let parseError = null;
+    try {
+      parsed = JSON.parse(content);
+    } catch(e) {
+      parseError = 'JSON 解析失败（结构化输出不符合 Schema）: ' + e.message;
+    }
+
+    if (parsed) {
+      resultDiv.innerHTML = '<div class="success-box">结构化输出成功</div><pre>' + escapeHtml(JSON.stringify(parsed, null, 2)) + '</pre>';
+      return;
+    }
+
+    if (retryCount < 2) {
+      body.messages = [
+        {role: 'user', content: body.messages[0].content},
+        {role: 'assistant', content: content},
+        {role: 'user', content: '你上一次的输出不是合法 JSON，也不符合 Schema。请重新输出，只返回符合以下 JSON Schema 的 JSON 对象：' + JSON.stringify(schema)},
+      ];
+      body.system_prompt = (body.system_prompt || '') + ' 请只输出 JSON，不要使用 Markdown 代码块。';
+      return runStructured(body, schema, retryCount + 1, resultDiv);
+    }
+
+    let html = '<div style="background:rgba(248,113,113,0.08);border:1px solid var(--error);border-radius:8px;padding:12px">';
+    html += '<div style="color:var(--error);margin-bottom:4px">结构化输出失败（已自动重试 2 次）</div>';
+    html += '<div class="error-box">' + escapeHtml(parseError) + '</div>';
+    html += '<div style="margin-top:8px;color:var(--text2);font-size:13px">修复策略：放宽 required 字段、简化嵌套结构、降低 pattern 约束，或尝试更强大的模型。</div>';
+    html += '<pre style="margin-top:8px">原始输出:\n' + escapeHtml(content) + '</pre></div>';
+    resultDiv.innerHTML = html;
+  } catch(e) {
+    resultDiv.innerHTML = '<div class="error-box">请求异常: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+function loadInvalidSchema() {
+  document.getElementById('structuredSchema').value = JSON.stringify({
+    type: 'object',
+    properties: {
+      name: {type: 'string'},
+      age: {type: 'integer', minimum: 0},
+      metadata: {
+        type: 'object',
+        properties: {
+          internal_id: {type: 'string', pattern: '^[A-Z]{3}-\\d{4}$'},
+          score: {type: 'number', minimum: 0, maximum: 100},
+        },
+        required: ['internal_id', 'score'],
+      },
+    },
+    required: ['name', 'age', 'metadata'],
+  }, null, 2);
+  document.getElementById('structuredInput').value = '李四今年 30 岁。';
+  toast('已加载 Schema 失败案例（缺少 metadata 信息）');
+}
+
+async function sendTools() {
+  const input = document.getElementById('toolsInput').value.trim();
+  const resultDiv = document.getElementById('toolsResult');
+  if (!input) return;
+  resultDiv.innerHTML = '<span class="spinner"></span> 执行工具调用链路...';
+
+  try {
+    const resp = await fetch(API_BASE + '/v1/tool-chain', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        model: currentModel,
+        messages: [{role: 'user', content: input}],
+        api_key: getApiKey(),
+        provider_config: currentProviderConfig(),
+      }),
+    });
+    const result = await resp.json();
+
+    if (resp.ok && result.success) {
+      let html = '';
+      (result.steps || []).forEach((step, i) => {
+        if (step.step === 'model_tool_call') {
+          html += '<div style="padding:8px;background:var(--bg);border-radius:6px;margin-bottom:8px;border:1px solid var(--border)">';
+          html += '<strong style="color:var(--primary)">步骤 ' + (i+1) + '：模型分析 → 决定调用工具</strong>';
+          if (step.response && step.response.tool_calls) {
+            html += renderToolCalls(step.response.tool_calls);
+          }
+          html += '</div>';
+        } else if (step.step === 'execute_tool') {
+          html += '<div style="padding:8px;background:var(--bg);border-radius:6px;margin-bottom:8px;border:1px solid var(--border)">';
+          html += '<strong style="color:var(--warning)">步骤 ' + (i+1) + '：执行工具 ' + escapeHtml(step.tool_name || '') + '</strong>';
+          html += '<div class="tool-result">结果: ' + escapeHtml(JSON.stringify(step.result || {})) + '</div>';
+          html += '</div>';
+        } else if (step.step === 'final_response') {
+          html += '<div style="padding:8px;background:var(--bg);border-radius:6px;border:1px solid var(--border)">';
+          html += '<strong style="color:var(--success)">步骤 ' + (i+1) + '：模型根据工具结果生成最终回复</strong>';
+          html += '<div class="message assistant" style="margin-top:8px"><div class="content">' + escapeHtml((step.response && step.response.content) || '') + '</div></div>';
+          html += '</div>';
+        }
+      });
+      if (result.elapsed_ms) {
+        html += '<div class="status-bar">耗时 ' + (result.elapsed_ms/1000).toFixed(2) + ' 秒</div>';
+      }
+      resultDiv.innerHTML = html;
+    } else {
+      resultDiv.innerHTML = '<div class="error-box">执行失败: ' + escapeHtml(result.error || ('HTTP ' + resp.status)) + '</div>';
+    }
+  } catch(e) {
+    resultDiv.innerHTML = '<div class="error-box">请求异常: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+async function compareEmbeddings() {
+  const t1 = document.getElementById('embedText1').value.trim();
+  const t2 = document.getElementById('embedText2').value.trim();
+  const resultDiv = document.getElementById('embeddingResult');
+  if (!t1 || !t2) { toast('请输入两段文本'); return; }
+  resultDiv.innerHTML = '<span class="spinner"></span> 计算中...';
+
+  try {
+    const embedProvider = document.getElementById('embeddingProviderSelect').value;
+    const embedModel = document.getElementById('embeddingModelSelect').value;
+    let embedProviderConfig = null;
+    let embedApiKey = '';
+    if (embedProvider === 'dashscope') {
+      embedApiKey = getDashscopeKey();
+    } else {
+      embedProviderConfig = buildProviderConfig(embedProvider, embedModel);
+    }
+    const resp = await fetch(API_BASE + '/v1/embeddings/compare', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({model: embedModel, text1: t1, text2: t2, api_key: embedApiKey, provider_config: embedProviderConfig}),
+    });
+    const result = await resp.json();
+
+    if (resp.ok && result.success) {
+      const sim = result.data.cosine_similarity;
+      let level = '不相关';
+      let color = 'var(--error)';
+      if (sim > 0.8) { level = '高度相关'; color = 'var(--success)'; }
+      else if (sim > 0.6) { level = '中度相关'; color = 'var(--warning)'; }
+      else if (sim > 0.3) { level = '低度相关'; color = '#f97316'; }
+
+      let html = '<div class="similarity-result">';
+      html += '<div style="margin-bottom:16px">';
+      html += '<div style="font-size:13px;color:var(--text2);margin-bottom:4px">文本 A</div><div style="background:var(--bg);padding:8px;border-radius:6px;font-size:14px">' + escapeHtml(t1) + '</div>';
+      html += '<div style="font-size:13px;color:var(--text2);margin:12px 0 4px">文本 B</div><div style="background:var(--bg);padding:8px;border-radius:6px;font-size:14px">' + escapeHtml(t2) + '</div>';
+      html += '</div>';
+      html += '<div class="similarity-score" style="color:' + color + '">' + (sim * 100).toFixed(1) + '%</div>';
+      html += '<div class="similarity-label">余弦相似度 — ' + level + '</div>';
+      html += '</div>';
+      resultDiv.innerHTML = html;
+    } else {
+      let msg = result.error || ('HTTP ' + resp.status);
+      if (msg.includes('AuthenticationError') || msg.includes('401') || msg.includes('Dashscope')) {
+        msg = embedProvider === 'dashscope'
+          ? '嵌入功能使用 Dashscope API Key，请在页面顶部输入 Dashscope 密钥后重试。原始错误: ' + msg
+          : '嵌入请求失败，请检查供应商配置。原始错误: ' + msg;
+      }
+      resultDiv.innerHTML = '<div class="error-box">计算失败: ' + escapeHtml(msg) + '</div>';
+    }
+  } catch(e) {
+    resultDiv.innerHTML = '<div class="error-box">请求异常: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+async function loadHistory() {
+  const listDiv = document.getElementById('historyList');
+  listDiv.innerHTML = '<span class="spinner"></span> 加载中...';
+  try {
+    const resp = await fetch(API_BASE + '/v1/history');
+    const result = await resp.json();
+    if (resp.ok && result.success && result.data) {
+      if (result.data.length === 0) {
+        listDiv.innerHTML = '<p style="color:var(--text2)">暂无历史记录</p>';
+        return;
+      }
+      let html = '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">共 ' + result.count + ' 条记录</div>';
+      result.data.forEach(item => {
+        const typeMap = {chat:'对话', stream:'流式', structured:'结构化', tool_call:'工具调用', tool_chain:'工具链路', embedding:'嵌入', embedding_compare:'嵌入对比'};
+        html += '<div class="history-item" onclick="showHistoryDetail(' + item.id + ')">';
+        html += '<span class="badge">' + (typeMap[item.call_type] || item.call_type) + '</span>';
+        html += '<span>' + escapeHtml(item.model) + '</span>';
+        html += '<span style="text-align:right;font-size:12px;color:var(--text2)">' + item.total_tokens + ' tokens · ' + item.elapsed_ms.toFixed(0) + 'ms</span>';
+        html += '</div>';
+      });
+      listDiv.innerHTML = html;
+    } else {
+      listDiv.innerHTML = '<p style="color:var(--text2)">加载失败: ' + escapeHtml(result.error || ('HTTP ' + resp.status)) + '</p>';
+    }
+  } catch(e) {
+    listDiv.innerHTML = '<p style="color:var(--text2)">加载失败: ' + escapeHtml(e.message) + '</p>';
+  }
+}
+
+async function showHistoryDetail(id) {
+  const detailDiv = document.getElementById('historyDetail');
+  detailDiv.style.display = 'block';
+  detailDiv.innerHTML = '<span class="spinner"></span> 加载详情...';
+  try {
+    const resp = await fetch(API_BASE + '/v1/history/' + id);
+    const result = await resp.json();
+    if (resp.ok && result.success && result.data) {
+      const item = result.data;
+      detailDiv.innerHTML = '<div class="panel"><div style="display:flex;justify-content:space-between">' +
+        '<h3>调用详情 #' + item.id + '</h3>' +
+        '<button class="btn btn-sm btn-secondary" onclick="document.getElementById(\'historyDetail\').style.display=\'none\'">关闭</button></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;margin-bottom:8px">' +
+        '<div>供应商: ' + escapeHtml(item.provider) + '</div>' +
+        '<div>模型: ' + escapeHtml(item.model) + '</div>' +
+        '<div>类型: ' + escapeHtml(item.call_type) + '</div>' +
+        '<div>时间: ' + escapeHtml(item.timestamp) + '</div>' +
+        '<div>Token: P=' + item.prompt_tokens + ' C=' + item.completion_tokens + ' T=' + item.total_tokens + '</div>' +
+        '<div>耗时: ' + item.elapsed_ms.toFixed(0) + 'ms</div></div>' +
+        (item.error ? '<div class="error-box">' + escapeHtml(item.error) + '</div>' : '') +
+        '<div style="font-size:13px;margin-top:8px"><strong>输入:</strong><pre>' + escapeHtml(JSON.stringify(item.input_data, null, 2)) + '</pre></div>' +
+        '<div style="font-size:13px;margin-top:8px"><strong>输出:</strong><pre>' + escapeHtml(JSON.stringify(item.output_data, null, 2)) + '</pre></div></div>';
+    } else {
+      detailDiv.innerHTML = '<div class="error-box">加载失败: ' + escapeHtml(result.error || ('HTTP ' + resp.status)) + '</div>';
+    }
+  } catch(e) {
+    detailDiv.innerHTML = '<div class="error-box">加载失败: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+document.getElementById('apiKeyInput').value = sessionStorage.getItem('playground_chat_key') || '';
+document.getElementById('dashscopeKeyInput').value = sessionStorage.getItem('playground_dashscope_key') || '';
+loadModels();
+console.log('LLM API Playground 已加载');
+</script>
+</body>
+</html>
