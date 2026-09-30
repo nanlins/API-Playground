@@ -19,3 +19,13 @@ jobs:
           python-version: '3.13'
       - run: pip install ruff
       - run: ruff check backend/ tests/
+  docker:
+    runs-on: ubuntu-latest
+    if: hashFiles('Dockerfile') != ''
+    steps:
+      - uses: actions/checkout@v4
+      - name: 构建 Docker 镜像（验证 Dockerfile 与依赖清单一致）
+        run: docker build -t llm-playground:${{ github.sha }} .
+
+# 修改记录：
+#   2026-09-29 新增 docker job：CI 内验证 Dockerfile 可构建，支撑简历"Docker 化部署"声明；hashFiles 守卫防 Dockerfile 缺失空转

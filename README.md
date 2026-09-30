@@ -1,5 +1,7 @@
 # LLM API Playground
 
+[![CI](https://github.com/nanlins/API-Playground/actions/workflows/ci.yml/badge.svg)](https://github.com/nanlins/API-Playground/actions/workflows/ci.yml)
+
 GitHub: https://github.com/nanlins/API-Playground
 
 交互式 LLM API 体验平台，支持 DeepSeek 和通义千问（Dashscope）两个供应商。
@@ -185,3 +187,15 @@ llm-playground/
   README.md         本文件
   .gitignore        Git 忽略规则
 ```
+
+## 历史说明
+
+本仓库早期历史中存在机器化提交形态：2026-08-17 20:17 同一分钟 33 个 commit（逐文件提交规程产物）。
+该形态源于当时执行的"逐文件提交"自动化规程，不代表真实开发节奏，也不反映代码来源的全部事实；
+自 2026-09-29 起已改为功能分支 + 逻辑分组提交 + squash 合并，并以 CI 门禁（测试/lint/格式/构建）作为合并前提。
+
+## 修改记录
+
+- 2026-09-29：
+  - .github/workflows/ci.yml：新增 docker job（hashFiles 守卫），CI 内验证 Dockerfile 可构建
+  - README.md：新增 CI badge、历史说明与修改记录小节
