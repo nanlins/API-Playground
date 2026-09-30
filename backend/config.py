@@ -15,7 +15,7 @@ DEEPSEEK_API_KEY = os.getenv(
     "DEEPSEEK_API_KEY",
     "",
 )
-DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://opencode.ai/zen/go/v1")
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
 DEEPSEEK_MODELS = os.getenv(
     "DEEPSEEK_MODELS",
     "deepseek-v4-flash,deepseek-v4-pro",
@@ -42,3 +42,6 @@ DASHSCOPE_EMBEDDING_MODEL = os.getenv(
 # Server Configuration
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
+
+# 修改记录：
+#   2026-09-30 DEEPSEEK_BASE_URL 默认改为官方 https://api.deepseek.com/v1

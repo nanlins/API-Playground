@@ -140,12 +140,23 @@ def missing_key_response(
 
 
 def parse_model(request_model: str):
-    """解析 provider/model 前缀"""
+    """解析 provider/model 前缀；无前缀时按已知模型列表推断，无法确定则抛出明确错误。
+
+    修复历史：原实现无前缀一律默认 dashscope，导致裸用 deepseek 模型时
+    被静默路由到错误供应商，报出误导性的"缺 Key"401。
+    """
     if "/" in request_model:
         provider_name, model = request_model.split("/", 1)
-    else:
-        provider_name, model = "dashscope", request_model
-    return provider_name, model
+        return provider_name, model
+    if request_model in DEEPSEEK_MODELS:
+        return "deepseek", request_model
+    if request_model in DASHSCOPE_MODELS:
+        return "dashscope", request_model
+    raise ValueError(
+        f"无法确定模型 '{request_model}' 的供应商，请使用 'provider/model' 格式；"
+        f"已知 deepseek 模型：{', '.join(DEEPSEEK_MODELS) or '(未配置)'}；"
+        f"dashscope 模型：{', '.join(DASHSCOPE_MODELS) or '(未配置)'}"
+    )
 
 
 # ===== 前端页面 =====
@@ -192,7 +203,10 @@ async def list_models():
 @app.post("/v1/chat/completions", response_model=APIResponse)
 async def chat_completions(request: ChatCompletionRequest):
     """聊天补全（支持普通对话、流式、结构化输出、工具调用）"""
-    provider_name, model = parse_model(request.model)
+    try:
+        provider_name, model = parse_model(request.model)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"success": False, "error": str(exc), "elapsed_ms": 0})
     api_key = extract_api_key(request)
     messages = strip_secret_from_messages(request.messages)
     provider_config = request.provider_config
@@ -383,7 +397,13 @@ async def execute_tool_endpoint(request: Request):
 @app.post("/v1/tool-chain", response_model=ToolChainResponse)
 async def tool_chain(request: ChatCompletionRequest):
     """演示完整的工具调用链路：模型生成工具调用 → 执行 → 返回结果给模型生成最终回复"""
-    provider_name, model = parse_model(request.model)
+    try:
+        provider_name, model = parse_model(request.model)
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": str(exc), "steps": [], "elapsed_ms": 0},
+        )
     api_key = extract_api_key(request)
     messages = strip_secret_from_messages(request.messages)
     provider_config = request.provider_config
@@ -728,3 +748,6 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run("backend.main:app", host=HOST, port=PORT, reload=True)
+
+# 修改记录：
+#   2026-09-30 parse_model 改为按已知模型列表推断供应商，未知模型返回明确 400（修复静默路由到 dashscope 的误导性报错）

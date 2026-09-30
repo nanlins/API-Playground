@@ -39,7 +39,7 @@ class ChatCompletionRequest(BaseModel):
     system_prompt: str | None = Field(None, description="系统提示词")
     stream: bool = Field(False, description="是否流式响应")
     temperature: float | None = Field(None, description="采样温度", ge=0, le=2)
-    max_tokens: int | None = Field(None, description="最大输出 Token 数")
+    max_tokens: int = Field(4096, description="最大输出 Token 数（默认 4096，防止推理模型无上限消耗）", ge=1, le=128000)
     response_format: dict[str, Any] | None = Field(None, description="结构化输出格式")
     tools: list[dict[str, Any]] | None = Field(None, description="可用工具列表")
     tool_choice: str | None = Field(None, description="工具选择策略")
@@ -118,3 +118,6 @@ class HistoryResponse(BaseModel):
     success: bool = True
     data: Any | None = None
     error: str | None = None
+
+# 修改记录：
+#   2026-09-30 max_tokens 默认 4096（ge=1,le=128000），防止推理模型无上限消耗
