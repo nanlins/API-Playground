@@ -1,4 +1,5 @@
 # FastAPI 应用入口 - LLM API Playground
+import asyncio
 import json
 import logging
 import math
@@ -390,7 +391,7 @@ async def execute_tool_endpoint(request: Request):
             status_code=404,
             content={"success": False, "error": f"未知工具: {tool_name}"},
         )
-    result = execute_tool(tool_name, arguments)
+    result = await asyncio.to_thread(execute_tool, tool_name, arguments)
     return {"success": True, "data": json.loads(result) if isinstance(result, str) else result}
 
 
@@ -456,7 +457,7 @@ async def tool_chain(request: ChatCompletionRequest):
                     arguments = json.loads(fn.get("arguments", "{}"))
                 except json.JSONDecodeError:
                     arguments = {}
-                tool_result = execute_tool(tool_name, arguments)
+                tool_result = await asyncio.to_thread(execute_tool, tool_name, arguments)
                 messages.append(
                     {
                         "role": "tool",
@@ -751,3 +752,6 @@ if __name__ == "__main__":
 
 # 修改记录：
 #   2026-09-30 parse_model 改为按已知模型列表推断供应商，未知模型返回明确 400（修复静默路由到 dashscope 的误导性报错）
+
+#   2026-10-01 execute_tool 调用改 asyncio.to_thread 防阻塞事件循环（真实网络工具）；
+#              启动预热按方案A移除（与首次调用并发触发限流）

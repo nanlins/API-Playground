@@ -866,10 +866,46 @@ async function sendStructured() {
     provider_config: currentProviderConfig(),
     response_format: {type: 'json_schema', json_schema: {name: 'extracted_data', schema: schema}},
   };
-  await runStructured(body, schema, 0, resultDiv);
+  await runStructured(body, schema, 0, resultDiv, input);
 }
 
-async function runStructured(body, schema, retryCount, resultDiv) {
+/** 遍历 JSON 叶子字段并检查其值是否在输入文本中有依据 */
+function groundingCheck(parsed, inputText) {
+  const hay = String(inputText || '');
+  function collectLeaves(obj, prefix) {
+    const out = [];
+    for (const [k, v] of Object.entries(obj)) {
+      const p = prefix ? prefix + '.' + k : k;
+      if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+        out.push(...collectLeaves(v, p));
+      } else if (Array.isArray(v)) {
+        // 数组逐项检查
+        v.forEach((item, i) => {
+          if (item !== null && typeof item === 'object') {
+            out.push(...collectLeaves(item, p + '[' + i + ']'));
+          } else {
+            out.push({path: p + '[' + i + ']', value: item != null ? String(item) : 'null'});
+          }
+        });
+      } else {
+        out.push({path: p, value: v != null ? String(v) : 'null'});
+      }
+    }
+    return out;
+  }
+  const leaves = collectLeaves(parsed, '');
+  return leaves.filter(function(l) {
+    if (l.value === 'null' || l.value === '') return false;
+    // 精确匹配：字符串包含 或 数字作为独立 token（\b）
+    if (hay.includes(l.value)) return false;
+    var token = l.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var re = new RegExp('\\b' + token + '\\b');
+    if (re.test(hay)) return false;
+    return true;
+  });
+}
+
+async function runStructured(body, schema, retryCount, resultDiv, inputText) {
   if (retryCount > 0) {
     resultDiv.innerHTML = '<span class="spinner"></span> 第 ' + retryCount + ' 次修正重试中...';
   }
@@ -895,7 +931,16 @@ async function runStructured(body, schema, retryCount, resultDiv) {
     }
 
     if (parsed) {
-      resultDiv.innerHTML = '<div class="success-box">结构化输出成功</div><pre>' + escapeHtml(JSON.stringify(parsed, null, 2)) + '</pre>';
+      const fabricated = groundingCheck(parsed, inputText);
+      let html = '<div class="success-box">结构化输出成功（Schema 校验通过）</div>';
+      if (fabricated.length) {
+        html += '<div style="background:rgba(248,113,113,0.08);border:1px solid var(--error);border-radius:8px;padding:12px;margin:8px 0">'
+          + '<div style="color:var(--error)">⚠ 以下字段在输入中无依据（模型为满足 Schema 而编造）: ' + escapeHtml(fabricated.map(function(f){return f.path + ' = ' + f.value;}).join('、')) + '</div>'
+          + '<div style="margin-top:4px;font-size:13px;color:var(--text2)">教学要点：JSON Schema 只保证<b>格式</b>合法，不保证内容<b>真实</b>。必填字段在输入缺信息时，模型会幻觉补全。</div>'
+          + '</div>';
+      }
+      html += '<pre>' + escapeHtml(JSON.stringify(parsed, null, 2)) + '</pre>';
+      resultDiv.innerHTML = html;
       return;
     }
 
@@ -906,7 +951,7 @@ async function runStructured(body, schema, retryCount, resultDiv) {
         {role: 'user', content: '你上一次的输出不是合法 JSON，也不符合 Schema。请重新输出，只返回符合以下 JSON Schema 的 JSON 对象：' + JSON.stringify(schema)},
       ];
       body.system_prompt = (body.system_prompt || '') + ' 请只输出 JSON，不要使用 Markdown 代码块。';
-      return runStructured(body, schema, retryCount + 1, resultDiv);
+      return runStructured(body, schema, retryCount + 1, resultDiv, inputText);
     }
 
     let html = '<div style="background:rgba(248,113,113,0.08);border:1px solid var(--error);border-radius:8px;padding:12px">';
@@ -938,14 +983,14 @@ function loadInvalidSchema() {
     required: ['name', 'age', 'metadata'],
   }, null, 2);
   document.getElementById('structuredInput').value = '李四今年 30 岁。';
-  toast('已加载 Schema 失败案例（缺少 metadata 信息）');
+  toast('已加载 Schema 失败案例：输入缺少 metadata 信息——点击发送后观察模型是否编造字段（接地检查会标注）');
 }
 
-async function sendTools() {
+async function sendTools(retryCount) {
   const input = document.getElementById('toolsInput').value.trim();
   const resultDiv = document.getElementById('toolsResult');
   if (!input) return;
-  resultDiv.innerHTML = '<span class="spinner"></span> 执行工具调用链路...';
+  if (!retryCount) resultDiv.innerHTML = '<span class="spinner"></span> 执行工具调用链路...';
 
   try {
     const resp = await fetch(API_BASE + '/v1/tool-chain', {
@@ -987,9 +1032,17 @@ async function sendTools() {
       }
       resultDiv.innerHTML = html;
     } else {
+      if (!retryCount) {
+        resultDiv.innerHTML = '<span class="spinner"></span> 执行失败（' + escapeHtml(result.error || ('HTTP ' + resp.status)) + '），自动重试一次...';
+        return sendTools(1);
+      }
       resultDiv.innerHTML = '<div class="error-box">执行失败: ' + escapeHtml(result.error || ('HTTP ' + resp.status)) + '</div>';
     }
   } catch(e) {
+    if (!retryCount) {
+      resultDiv.innerHTML = '<span class="spinner"></span> 请求异常，自动重试一次...';
+      return sendTools(1);
+    }
     resultDiv.innerHTML = '<div class="error-box">请求异常: ' + escapeHtml(e.message) + '</div>';
   }
 }
@@ -1115,3 +1168,6 @@ console.log('LLM API Playground 已加载');
 </script>
 </body>
 </html>
+<!-- 修改记录：
+  2026-10-01 结构化输出新增接地检查（标注输入中无依据的编造字段）；Schema 失败案例弹窗文案改为操作指引；工具调用失败自动重试一次
+-->
