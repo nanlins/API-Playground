@@ -6,6 +6,7 @@ __pycache__/
 
 # Database
 logs.db
+data/
 
 # Environment
 .env
@@ -22,3 +23,5 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# 修改记录：2026-10-01 新增 data/ 忽略

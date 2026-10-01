@@ -1,6 +1,7 @@
 # 数据库日志模块 - 记录每次 API 调用的模型、输入、输出、Token 用量和耗时
 import asyncio
 import json
+import logging
 from datetime import UTC, datetime
 from functools import lru_cache
 
@@ -8,6 +9,8 @@ from sqlalchemy import Column, DateTime, Float, Integer, String, Text, create_en
 from sqlalchemy.orm import Session, declarative_base
 
 from backend.config import DATABASE_PATH
+
+logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 
@@ -126,8 +129,16 @@ def get_call_log(log_id):
 
 
 async def save_call_log_async(*args, **kwargs):
-    """异步保存日志，避免阻塞事件循环"""
-    return await asyncio.to_thread(save_call_log, *args, **kwargs)
+    """异步保存日志，避免阻塞事件循环。
+
+    历史持久化是辅助功能：写失败只记录告警、返回 None，不向上抛出，
+    防止 DB 异常打断流式响应（生成器中途崩溃 → 前端 network error）或把主接口打成 500。
+    """
+    try:
+        return await asyncio.to_thread(save_call_log, *args, **kwargs)
+    except Exception:
+        logger.warning("保存调用历史失败（不影响主链路）", exc_info=True)
+        return None
 
 
 async def get_call_history_async(limit=50):
@@ -138,3 +149,6 @@ async def get_call_history_async(limit=50):
 async def get_call_log_async(log_id):
     """异步获取单条调用历史"""
     return await asyncio.to_thread(get_call_log, log_id)
+
+# 修改记录：
+#   2026-10-01 save_call_log_async 改为安全包装：历史写失败仅告警不抛出，防止流式中途崩溃/主接口 500

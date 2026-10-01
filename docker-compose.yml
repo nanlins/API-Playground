@@ -6,5 +6,9 @@ services:
     env_file:
       - .env
     volumes:
-      - ./logs.db:/app/logs.db
+      # 目录挂载：单文件 bind mount 在宿主缺失时会被 Docker 创建为目录，导致 SQLite 无法打开
+      - ./data:/app/data
     restart: unless-stopped
+
+# 修改记录：
+#   2026-10-01 单文件 bind mount ./logs.db 改为目录挂载 ./data:/app/data（修复宿主缺失文件被 Docker 创建为目录导致的 SQLITE_CANTOPEN）
