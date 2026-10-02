@@ -8,6 +8,8 @@ from datetime import datetime
 
 import httpx
 
+from backend.city_coords import lookup_city, normalize_city
+
 # 工具 1：天气查询（Open-Meteo 实时数据，免 API Key）
 WEATHER_TOOL = {
     "type": "function",
@@ -127,22 +129,77 @@ WMO_CODES = {
 }
 
 
+def _geo_openmeteo(location):
+    """open-meteo 地理编码：count=5 候选里优先精确名（作为在线兜底之一）"""
+    geo = httpx.get(
+        "https://geocoding-api.open-meteo.com/v1/search",
+        params={"name": location, "count": 5, "language": "zh", "format": "json"},
+        timeout=15,
+    ).json()
+    results = geo.get("results") or []
+    if not results:
+        return None
+    if len(results) == 1:
+        p = results[0]
+        return p["latitude"], p["longitude"], p.get("name", location)
+    # 多候选：优先 name 与查询名一致的
+    norm = normalize_city(location)
+    for p in results:
+        if str(p.get("name", "")).strip() in (location, norm):
+            return p["latitude"], p["longitude"], p.get("name", location)
+    p = results[0]
+    return p["latitude"], p["longitude"], p.get("name", location)
+
+
+def _geo_nominatim(location):
+    """Nominatim(OpenStreetMap) 兜底：中文县镇乡覆盖好、免 key"""
+    resp = httpx.get(
+        "https://nominatim.openstreetmap.org/search",
+        params={"q": location, "format": "json", "limit": 1, "accept-language": "zh"},
+        headers={"User-Agent": _UA},
+        timeout=12,
+        follow_redirects=True,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    if not data:
+        return None
+    p = data[0]
+    label = p.get("display_name", location).split(",")[0]
+    return float(p["lat"]), float(p["lon"]), label
+
+
+def _geo(location):
+    """定位链：离线坐标表 → Nominatim → open-meteo；全部失败返回 None"""
+    hit = lookup_city(location)
+    if hit:
+        return hit
+    try:
+        hit = _geo_nominatim(location)
+        if hit:
+            return hit
+    except Exception:
+        pass
+    try:
+        hit = _geo_openmeteo(location)
+        if hit:
+            return hit
+    except Exception:
+        pass
+    return None
+
+
 def _weather(location, unit):
     last_err = None
     for _attempt in range(2):
         try:
-            geo = httpx.get(
-                "https://geocoding-api.open-meteo.com/v1/search",
-                params={"name": location, "count": 1, "language": "zh", "format": "json"},
-                timeout=15,
-            ).json()
-            results = geo.get("results") or []
-            if not results:
+            geo = _geo(location)
+            if not geo:
                 return json.dumps({"error": f"未找到城市: {location}"}, ensure_ascii=False)
-            place = results[0]
+            lat, lon, place_name = geo
             params = {
-                "latitude": place["latitude"],
-                "longitude": place["longitude"],
+                "latitude": lat,
+                "longitude": lon,
                 "current": "temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m",
                 "timezone": "auto",
             }
@@ -150,11 +207,9 @@ def _weather(location, unit):
                 params["temperature_unit"] = "fahrenheit"
             wx = httpx.get("https://api.open-meteo.com/v1/forecast", params=params, timeout=15).json()
             cur = wx.get("current", {})
-            place_name = place.get("name", location)
-            region = "".join(filter(None, [place.get("admin1", ""), place.get("country", "")]))
             return json.dumps(
                 {
-                    "location": f"{place_name}（{region}）" if region else place_name,
+                    "location": place_name,
                     "temperature": cur.get("temperature_2m"),
                     "unit": unit,
                     "condition": WMO_CODES.get(cur.get("weather_code"), f"代码{cur.get('weather_code')}"),
@@ -326,4 +381,5 @@ def execute_tool(tool_name, arguments):
 #              所有工具结果带 demo:false 与 source 标注；失败返回 error 而非占位数据；
 #              搜索不引入 ddgs 重依赖（镜像构建网络受限），多后端链 Bing→Baidu→DDG-HTML 按可达性降级；
 #              天气请求超时 15s 且失败自动重试 1 次（抗容器冷启动 DNS 慢）；
-#              启动预热经实测与首次调用并发触发限流，已按方案A移除
+#              启动预热经实测与首次调用并发触发限流，已按方案A移除；
+#              天气定位链改为：离线坐标表(backend/city_coords.py) → Nominatim → open-meteo(count=5 精确名优先)
