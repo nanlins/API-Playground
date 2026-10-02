@@ -136,6 +136,16 @@ docker compose up -d --force-recreate
 - 根目录 `requirements.txt`：本地开发与测试依赖（含 pytest、ruff、tzdata）
 - `backend/requirements.txt`：Docker 运行时依赖（仅后端运行所需）
 
+## 基础设施与端口
+
+| 服务 | 镜像 | 宿主端口 → 容器端口 | 用途 |
+|---|---|---|---|
+| llm-playground | 本地构建（`python:3.13-slim`） | `8000 → 8000` | API + 前端 |
+
+- **无 Redis / 无 PostgreSQL / 无 RabbitMQ**：调用历史用 SQLite（`data/logs.db`，经 `./data:/app/data` 目录挂载持久化）
+- 运行时需 Python 3.13+（本地）；Docker 方式一键运行
+- 构建期 pip 源可用 `--build-arg PIP_INDEX_URL=...` 覆盖（国内可传阿里云/清华镜像加速）
+
 ## 运行测试
 
 ```bash
@@ -173,3 +183,5 @@ llm-playground/
 - 2026-10-01：工具真实数据化（天气/搜索/时间）、结构化接地检查、冷启动韧性、docker pip 源 ARG
 - 2026-10-01：天气定位链支持省级/县级/外国城市（离线坐标表 + Nominatim 兜底）
 - 2026-10-01：重写 README，同步真实工具数据源、定位链、模型前缀、Docker 挂载等当前实现
+
+- 2026-10-02：补充基础设施与端口（无 Redis/PG、SQLite 历史、app 8000）
