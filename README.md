@@ -1,10 +1,11 @@
 # LLM API Playground
 
+> 用途：交互式 LLM API 体验平台（DeepSeek / 通义千问双供应商）——聊天、流式、结构化输出、真实工具调用（天气/搜索/时间/计算器）、嵌入对比与调用历史，配套 Web 前端与 Docker 部署。
+
 [![CI](https://github.com/nanlins/API-Playground/actions/workflows/ci.yml/badge.svg)](https://github.com/nanlins/API-Playground/actions/workflows/ci.yml)
 
 GitHub: https://github.com/nanlins/API-Playground
 
-交互式 LLM API 体验平台，支持 DeepSeek 和通义千问（Dashscope）两个供应商。
 ---
 
 ## 核心概念
@@ -24,57 +25,50 @@ GitHub: https://github.com/nanlins/API-Playground
 
 | # | 功能 | 说明 |
 |---|------|------|
-| 1 | 普通对话调用 | POST /v1/chat/completions |
-| 2 | 流式响应 | POST /v1/chat/completions + stream=true |
-| 3 | 结构化输出 | POST /v1/chat/completions + response_format |
-| 4 | 工具调用链路 | POST /v1/tool-chain |
-| 5 | 嵌入生成与相似度计算 | POST /v1/embeddings/compare |
-| 6 | 调用历史 | GET /v1/history |
-| 7 | 双供应商对比 | GET /v1/models |
-| 8 | 供应商和模型列表 | 页面顶部下拉框切换 |
-| 9 | 网页供应商管理 | 添加/编辑/删除自定义 OpenAI 兼容供应商并测试连接 |
+| 1 | 普通对话调用 | `POST /v1/chat/completions` |
+| 2 | 流式响应 | `POST /v1/chat/completions` + `stream=true` |
+| 3 | 结构化输出 | `POST /v1/chat/completions` + `response_format`（json_object / json_schema） |
+| 4 | 工具调用链路 | `POST /v1/tool-chain`（真实数据工具） |
+| 5 | 嵌入生成与相似度计算 | `POST /v1/embeddings`、`/v1/embeddings/compare` |
+| 6 | 调用历史 | `GET /v1/history`、`/v1/history/{id}` |
+| 7 | 供应商与模型列表 | `GET /v1/models` |
+| 8 | 网页供应商管理 | 添加/编辑/删除自定义 OpenAI 兼容供应商并测试连接（`POST /v1/providers/test`） |
 
 ---
 
 ## 工具调用链路演示
 
-完整的工具调用分为三步：
+完整的工具调用分三步：
 
 1. **模型生成工具调用意图** — 模型分析用户输入，决定调用哪个工具并填充参数
-2. **系统执行工具** — 后端执行对应的工具函数（天气查询、计算器、网页搜索、时间查询），返回结果
-3. **模型生成最终回复** — 工具执行结果回传给模型，模型据此生成自然语言回复
+2. **系统执行工具** — 后端执行对应工具，返回结果
+3. **模型生成最终回复** — 工具结果回传，模型据此生成自然语言回复
 
 核心原则：**模型只生成工具调用意图，系统负责执行工具。**
 
-可用工具：
-- get_weather - 查询指定地点的天气
-- calculator - 算术运算（加、减、乘、除、幂）
-- web_search - 搜索实时信息
-- get_current_time - 获取指定时区的当前时间
+### 可用工具（真实数据）
 
-注意：`get_weather` 和 `web_search` 返回的是教学演示数据，并不请求真实天气或搜索服务。
+| 工具 | 数据源 | 说明 |
+|------|--------|------|
+| `get_weather` | Open-Meteo（免密钥） | 实时天气；定位链：离线坐标表 → Nominatim → Open-Meteo 地理编码 |
+| `calculator` | 本地运算 | 加/减/乘/除/幂 |
+| `web_search` | Bing → 百度 → DuckDuckGo-HTML 多后端链 | 实时搜索，按网络可达性自动降级 |
+| `get_current_time` | zoneinfo（IANA 时区库） | 自动处理夏令时（DST） |
 
-验证方式：在页面「工具调用」标签页中输入问题，点击「调用工具链路」按钮，即可看到完整的步骤展示。
+所有工具结果带 `demo:false` 与 `source` 字段标注数据来源；失败返回明确 `error`（网络/未找到城市），不返回占位数据。
+
+> 天气定位：内置 `backend/city_coords.py` 离线坐标表（34 省级 + 全部地级市 + 常用县 + 常见外国城市中文音译），省级名映射省会代表坐标（如"河北省"→石家庄），县级与外国城市由 Nominatim（OpenStreetMap）兜底。
 
 ---
 
-## 结构化输出失败处理
+## 结构化输出与"失败案例"
 
-演示结构化输出在 Schema 约束过严时的失败场景：
+演示结构化输出在 Schema 约束下的两类现象：
 
-1. 在「结构化输出」标签页中点击「测试 Schema 失败案例」按钮
-2. 系统会加载一个包含严格约束（如 pattern 正则匹配）的 JSON Schema
-3. 输入缺少必要字段的数据，发送请求
-4. 模型输出无法匹配 Schema，返回错误
-5. 页面会显示：
-   - 原始模型输出
-   - JSON 解析错误详情
-   - 修复策略建议（放宽约束、简化 Schema、使用更强模型）
+1. **格式失败**：Schema 过严（pattern 正则等）时，模型可能输出非法 JSON → 自动重试 2 次，仍失败则展示原始输出、解析错误与修复建议（放宽 required、简化嵌套、换更强模型）。
+2. **语义失败（编造）**：输入缺少必填字段信息时，模型会为满足 Schema 而**编造**字段值（例如编造 `metadata.internal_id`）。页面通过**接地检查**把输入文本中无依据的叶子字段红字标注为"模型编造"，提示 **Schema 只保证格式、不保证真实**。
 
-修复策略示例：
-- 移除或放宽 pattern 约束
-- 减少 required 字段
-- 简化嵌套结构
+操作：结构化输出标签页点「加载 Schema 失败案例」→ 输入"李四今年 30 岁"→ 发送，观察红字标注。
 
 ---
 
@@ -82,47 +76,23 @@ GitHub: https://github.com/nanlins/API-Playground
 
 | 功能 | DeepSeek | 通义千问（Dashscope） |
 |------|----------|---------------------|
-| 对话模型 | deepseek-v4-flash / deepseek-v4-pro | qwen-plus / qwen-max / qwen-turbo |
+| 对话模型 | deepseek-flash / deepseek-v4-pro | qwen-plus / qwen-max / qwen-turbo |
 | 流式响应 | 支持 | 支持 |
-| 结构化输出 | 通过 System Prompt 指令实现 | 通过原生 response_format 参数 |
+| 结构化输出 | 支持（json_object / json_schema） | 支持（原生 response_format） |
 | 工具调用 | 支持 | 支持 |
 | 嵌入向量 | 不支持 | text-embedding-v2 |
+
+> 模型名需带供应商前缀：`deepseek/deepseek-flash`、`dashscope/qwen-plus`。裸写模型名默认按已知模型列表推断供应商，无法确定时返回明确 400。
 
 ---
 
 ## Prompt 工程
 
-详细记录见 [docs/prompt_records.md](docs/prompt_records.md)，包含：
-
-- 使用的 Prompt 结构（角色设定、任务描述、输出格式控制、约束条件）
-- System Prompt 设计思路
-- 是否使用 Few-shot 示例（本项目未使用，原因在文档中说明）
-- 输出格式控制方式
-- 模型不确定或越界回答的处理策略
-- 3 组 Prompt 修改前后的效果对比
+详细记录见 [docs/prompt_records.md](docs/prompt_records.md)，包含使用的 Prompt 结构、System Prompt 设计思路、Few-shot 取舍、输出格式控制、越界处理策略与修改前后对比。
 
 ## 网页供应商配置
 
-页面「供应商管理」标签页可添加任意 OpenAI 兼容供应商（如 Kimi、智谱、自定义网关），无需修改 `.env` 或重启服务。
-
-### 添加供应商
-
-1. 打开「供应商管理」，点击「+ 新增供应商」。
-2. 填写名称、显示名、Base URL、API Key、聊天模型和 Embedding 模型。
-3. 点击「保存」，供应商会立即出现在顶部聊天下拉框和 Embedding 供应商下拉框。
-
-内置供应商继续从 `.env` 读取；自定义供应商只保存在当前浏览器：
-- 非敏感配置（名称、Base URL、模型列表）保存到 `localStorage`
-- API Key 单独保存到 `sessionStorage`，关闭页面后清除
-- 自定义供应商不会写入 `backend/config.py`，也不会进入 Git
-
-### 测试连接
-
-保存前可点击「测试聊天」或「测试 Embedding」，后端会调用一次 `POST /v1/providers/test` 并显示模型、耗时与向量维度。
-
-### 安全说明
-
-API Key 仅用于当前请求，不会出现在日志、历史记录和接口响应中。
+页面「供应商管理」可添加任意 OpenAI 兼容供应商（Kimi、智谱、自定义网关等），无需改 `.env` 或重启。非敏感配置存 `localStorage`，API Key 存 `sessionStorage`（关页即清），不写入仓库、不进 Git、不进日志/历史/响应。
 
 ## 快速开始
 
@@ -130,17 +100,17 @@ API Key 仅用于当前请求，不会出现在日志、历史记录和接口响
 
 ```bash
 python -m venv .venv
-.venv/Scripts/activate
+# Windows: .venv\Scripts\activate  /  macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
 ### 2. 配置 API Key
 
 ```bash
-copy .env.example .env
+cp .env.example .env   # Windows: copy .env.example .env
 ```
 
-编辑 `.env`，填入 DeepSeek 和 Dashscope 密钥。也可以在页面顶部直接输入 Key，无需修改 `.env`；嵌入功能默认使用 Dashscope，也可在「供应商管理」中添加支持 Embedding 的自定义供应商。
+编辑 `.env` 填入 `DEEPSEEK_API_KEY`（`DEEPSEEK_BASE_URL=https://api.deepseek.com/v1`、`DEEPSEEK_MODELS=deepseek-flash`）与可选的 `DASHSCOPE_API_KEY`（嵌入功能用）。也可在页面顶部直接输入 Key。
 
 ### 3. 启动后端
 
@@ -153,49 +123,53 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ### 4. Docker 启动
 
 ```bash
-docker compose up -d
+# 国内网络可加构建参数加速：
+docker compose build --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+docker compose up -d --force-recreate
 ```
 
-浏览器访问 `http://localhost:8000`，`logs.db` 会在运行时自动创建。
+- 数据库（调用历史）落在宿主机 `data/logs.db`，通过 `./data:/app/data` 目录挂载持久化。
+- 构建期 pip 源可用 `PIP_INDEX_URL` 覆盖（默认官方源保证 CI 一致），并内置 `--retries/--timeout` 抗镜像限流。
 
 ## 依赖清单
 
-- 根目录 `requirements.txt`：本地开发与测试依赖，包含 pytest、ruff 等工具
-- `backend/requirements.txt`：Docker 运行时依赖，只包含后端运行所需包
-
----
-
----
+- 根目录 `requirements.txt`：本地开发与测试依赖（含 pytest、ruff、tzdata）
+- `backend/requirements.txt`：Docker 运行时依赖（仅后端运行所需）
 
 ## 运行测试
 
 ```bash
-python -m pytest tests/ -v
+python -m pytest tests/ -v     # 33 个测试全部通过
+ruff check backend/ tests/     # 代码风格
 ```
-
-预期 33 个测试全部通过，涵盖 API 路由、流式 usage、工具调用增量聚合与错误处理。
 
 ## 项目结构
 
 ```text
 llm-playground/
-  backend/          FastAPI 后端（路由、供应商抽象、数据库日志、工具定义）
-  frontend/         单页 Web UI（HTML/CSS/JS）
-  tests/            pytest 测试套件
-  examples/         使用示例脚本
-  docs/             文档（Prompt 记录、问题日志、决策记录、错误解决方案）
-  README.md         本文件
-  .gitignore        Git 忽略规则
+  backend/
+    main.py           FastAPI 入口（路由、SSE、工具链路、接地检查）
+    tools.py          工具定义与执行（真实天气/搜索/时间/计算器）
+    city_coords.py    离线省市县/外国城市坐标表 + 归一化
+    providers.py      供应商抽象（OpenAI 兼容）
+    database.py       调用历史 SQLite（保存失败不中断主链路）
+    config.py         配置（.env 加载）
+  frontend/           单页 Web UI（HTML/CSS/JS）
+  tests/              pytest 测试套件
+  examples/           使用示例脚本
+  docs/               文档
+  README.md           本文件
 ```
 
 ## 历史说明
 
-本仓库早期历史中存在机器化提交形态：2026-08-17 20:17 同一分钟 33 个 commit（逐文件提交规程产物）。
-该形态源于当时执行的"逐文件提交"自动化规程，不代表真实开发节奏，也不反映代码来源的全部事实；
-自 2026-09-29 起已改为功能分支 + 逻辑分组提交 + squash 合并，并以 CI 门禁（测试/lint/格式/构建）作为合并前提。
+本仓库早期历史存在机器化提交形态：2026-08-17 20:17 同一分钟 33 个 commit（逐文件提交规程产物）。该形态源于当时执行的"逐文件提交"自动化规程，不代表真实开发节奏；自 2026-09-29 起已改为功能分支 + 逻辑分组提交 + squash 合并，并以 CI 门禁（测试/lint/格式/构建）作为合并前提。
 
 ## 修改记录
 
-- 2026-09-29：
-  - .github/workflows/ci.yml：新增 docker job（hashFiles 守卫），CI 内验证 Dockerfile 可构建
-  - README.md：新增 CI badge、历史说明与修改记录小节
+- 2026-09-29：新增 docker job（hashFiles 守卫）与 CI badge、历史说明小节
+- 2026-09-30：DeepSeek 真实接入工程缺陷修复（模型路由/默认 max_tokens/官方 base_url）
+- 2026-10-01：修复 Docker 下 SQLITE_CANTOPEN（目录挂载 data/）与流式中断/结构化 500
+- 2026-10-01：工具真实数据化（天气/搜索/时间）、结构化接地检查、冷启动韧性、docker pip 源 ARG
+- 2026-10-01：天气定位链支持省级/县级/外国城市（离线坐标表 + Nominatim 兜底）
+- 2026-10-01：重写 README，同步真实工具数据源、定位链、模型前缀、Docker 挂载等当前实现
